@@ -17,6 +17,17 @@ struct RecordingView: View {
     @State private var rating = 0
     @State private var plannedPaths = TrailPaths()
     @State private var loadingPaths = false
+    @State private var confirmExit = false
+    @State private var distanceToTrail: CLLocationDistance?
+
+    /// 距路线 500 米内才允许开始（自由记录不受限）
+    private static let startProximityMeters: CLLocationDistance = 500
+
+    private var canStart: Bool {
+        guard trail != nil else { return true }
+        guard let distance = distanceToTrail else { return false }
+        return distance <= Self.startProximityMeters
+    }
 
     init(trail: Trail?) {
         self.trail = trail
@@ -62,22 +73,40 @@ struct RecordingView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") {
-                        recorder.reset()
-                        dismiss()
+                        if recorder.state == .idle {
+                            recorder.reset()
+                            dismiss()
+                        } else {
+                            confirmExit = true
+                        }
                     }
                 }
+            }
+            .confirmationDialog("确定要退出吗？", isPresented: $confirmExit, titleVisibility: .visible) {
+                Button("放弃本次记录", role: .destructive) {
+                    recorder.reset()
+                    dismiss()
+                }
+                Button("继续记录", role: .cancel) {}
+            } message: {
+                Text("退出将丢弃当前未保存的轨迹")
             }
             .sheet(isPresented: $showSaveSheet) {
                 saveSheet
             }
             .onAppear {
                 recorder.requestPermission()
+                recorder.startPreview()
+            }
+            .onChange(of: recorder.currentLocation) {
+                updateDistanceToTrail()
             }
             .task {
                 if let trail {
                     loadingPaths = true
                     plannedPaths = await TrailPathLoader.paths(around: trail, db: store.db)
                     loadingPaths = false
+                    updateDistanceToTrail()
                     // 路线加载后（尚未开始录制时）把视野适配到整条路线
                     if recorder.state == .idle, !plannedPaths.matched.isEmpty {
                         var points = plannedPaths.matched.flatMap { $0 }
@@ -116,6 +145,9 @@ struct RecordingView: View {
                 // 调试钩子：MT_AUTO_RECORD=<秒数> 自动开始并在 N 秒后结束保存
                 if let s = ProcessInfo.processInfo.environment["MT_AUTO_RECORD"], let secs = Double(s) {
                     recorder.start()
+                    withAnimation {
+                        position = .userLocation(fallback: .automatic)
+                    }
                     try? await Task.sleep(for: .seconds(secs))
                     recorder.stop()
                     rating = 5
@@ -138,8 +170,28 @@ struct RecordingView: View {
 
             switch recorder.state {
             case .idle:
-                bigButton("开始记录", icon: "record.circle.fill", color: Color.trailGreen) {
-                    recorder.start()
+                VStack(spacing: 8) {
+                    bigButton("开始记录", icon: "record.circle.fill",
+                              color: canStart ? Color.trailGreen : .gray) {
+                        guard canStart else { return }
+                        recorder.start()
+                        withAnimation {
+                            position = .userLocation(fallback: .automatic)
+                        }
+                    }
+                    .disabled(!canStart)
+                    if trail != nil, !canStart {
+                        if let distance = distanceToTrail {
+                            Text(String(format: "距步道 %.1f km，需在 %.0f 米内才能开始记录",
+                                        distance / 1000, Self.startProximityMeters))
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        } else {
+                            Text("正在获取你的位置…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             case .recording:
                 bigButton("结束", icon: "stop.circle.fill", color: .red) {
@@ -209,6 +261,20 @@ struct RecordingView: View {
             }
         }
         .presentationDetents([.medium])
+    }
+
+    /// 计算当前位置到本步道的最近距离：取「路线上最近点」与「步道口」的较小者
+    /// （OSM 匹配的路段可能从离步道口较远处才开始，站在步道口必须视为在附近）
+    private func updateDistanceToTrail() {
+        guard let trail, let location = recorder.currentLocation else { return }
+        var distance = location.distance(
+            from: CLLocation(latitude: trail.latitude, longitude: trail.longitude))
+        if let routeMin = plannedPaths.matched.lazy.joined()
+            .map({ location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) })
+            .min() {
+            distance = min(distance, routeMin)
+        }
+        distanceToTrail = distance
     }
 
     private func save(notes: String) {
