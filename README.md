@@ -6,13 +6,12 @@
 
 ## 功能
 
-- **内置全量数据库**：`MyTrails/Resources/trails.sqlite`（66 MB，77,591 条美国步道 + FTS5 索引，快照 2024-05-14）随 App 打包，首次启动直接拷贝激活、秒开可用。由 `scripts/build_db.py` 从 CSV 预构建。
-- **全量数据下载**：「关于 → 重新下载全量数据」可从 GitHub 重新拉取 [Bhuemann/AllTrailsDataExporter](https://github.com/Bhuemann/AllTrailsDataExporter) 的全量 CSV（约 53 MB），流式解析后导入本地 SQLite，带下载/导入双阶段进度条；bundle 资源缺失时首启也会自动走这条路径。
+- **远端数据库 + 首启下载**：全量数据库（77,591 条美国步道 + FTS5 索引 + 42,290 条全精度离线路线，509 MB）托管在 [lfkdsk/Trails-DB](https://github.com/lfkdsk/Trails-DB/releases) 的 Release 上，App 本体仅 ~1 MB；首次启动自动下载（带进度条），「关于 → 重新下载」可随时刷新。数据库由 `scripts/build_db.py`（元数据）+ `scripts/build_routes.sh`（路线）预构建，调试可用 `MT_DB_URL` 环境变量指向本地服务器。
 - **探索**：地图浏览当前区域步道（按热度取前 260 条），标记颜色对应难度；点击查看详情。
 - **搜索**：FTS5 全文搜索步道名 / 公园 / 州名（CJK 输入自动退化为 LIKE），支持筛选（难度、最低评分、长度、州）。
 - **详情页**：封面图、评分与评论数、距离/爬升/最高点/预计时长（公制换算）、小地图、一键开始 GPS 记录。
 - **GPS 轨迹记录**：CoreLocation 实时定位，地图上实时绘制轨迹线，统计里程/用时/轨迹点；从步道详情页进入自动关联步道，也可在「记录」Tab 自由记录。**开始录制前**即画出路线（见下）。带 GPS 跳变过滤（>15 m/s 或 >500 m 的瞬移不计里程，起步阶段跳变自动重置轨迹）。结束后保存轨迹（降采样至 ≤600 点控制同步体积），可**打 1–5 星评分并写测评**。记录详情页回看完整路线图（起终点标记）、评分与测评；步道详情页显示已走次数与我的评分。「记录」Tab 汇总统计（次数/总公里/总时长），支持滑动删除。
-- **每条步道的离线路线**：数据集本身只有起点坐标，无轨迹线；AllTrails 官方轨迹在 Cloudflare 与已失效的 Algolia key 之后无法合法批量获取。路线在**构建期离线预匹配**：`scripts/build_routes.sh` 逐州下载 Geofabrik 的 OSM 数据，`scripts/match_routes.py` 抽取有名字的徒步路径（`highway=path/footway/track/steps`），按步道长度自适应半径（2.5–12km）做名称分词匹配（如 "Vernal and Nevada Falls **via Mist Trail**" ↔ OSM "**Mist Trail**"），Douglas-Peucker 简化（≈13m、≤800 点）后写入内置库 `trail_routes` 表。**运行时不联网**，详情页小地图与录制页直接读库绘制橙色路线，录制页相机自动适配整条路线；OSM 未覆盖的步道提示「暂无收录路线」。
+- **每条步道的离线路线**：数据集本身只有起点坐标，无轨迹线；AllTrails 官方轨迹在 Cloudflare 与已失效的 Algolia key 之后无法合法批量获取。路线在**构建期离线预匹配**：`scripts/build_routes.sh` 逐州下载 Geofabrik 的 OSM 数据，`scripts/match_routes.py` 抽取有名字的徒步路径（`highway=path/footway/track/steps`），按步道长度自适应半径（2.5–12km）做名称分词匹配（如 "Vernal and Nevada Falls **via Mist Trail**" ↔ OSM "**Mist Trail**"），以**全精度**（OSM 原始几何、6 位小数坐标）写入 `trail_routes` 表。**运行时不联网**，详情页小地图与录制页直接读库绘制橙色路线，录制页相机自动适配整条路线；OSM 未覆盖的步道提示「暂无收录路线」。
 - **收藏**：收藏列表。
 - **iCloud 同步**：收藏与徒步记录通过 iCloud 键值存储（`NSUbiquitousKeyValueStore`）跨设备同步——记录按 id 合并、`updatedAt` 新者胜、删除以墓碑传播；收藏整集合按时间戳新者胜。未登录 iCloud 时静默降级为纯本地。
 - **关于**：数据统计、重新下载全量数据。
