@@ -1,0 +1,5 @@
+build/
+MyTrails.xcodeproj/
+data/
+.DS_Store
+nohup.out
