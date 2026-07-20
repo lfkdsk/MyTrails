@@ -77,6 +77,8 @@ struct ExploreView: View {
                 VStack(spacing: 10) {
                     MapCompass(scope: mapScope)
                     MapUserLocationButton(scope: mapScope)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
                 }
                 .padding(.trailing, 14)
                 .padding(.bottom, 14)
