@@ -169,7 +169,7 @@ struct RecordingView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .foregroundStyle(.white)
-                .background(color, in: RoundedRectangle(cornerRadius: 14))
+                .background(color, in: Capsule())
         }
     }
 

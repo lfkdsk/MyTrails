@@ -29,6 +29,10 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>记录徒步路线需要使用你的位置。</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

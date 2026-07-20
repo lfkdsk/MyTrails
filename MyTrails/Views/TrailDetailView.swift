@@ -56,9 +56,9 @@ struct TrailDetailView: View {
                     Label("开始 GPS 记录", systemImage: "record.circle.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 14)
                         .foregroundStyle(.white)
-                        .background(Color.trailGreen, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color.trailGreen, in: Capsule())
                 }
                 .padding(.horizontal)
 
@@ -114,7 +114,7 @@ struct TrailDetailView: View {
             if let image = phase.image {
                 image.resizable().scaledToFill()
             } else {
-                LinearGradient(colors: [Color.trailGreen.opacity(0.5), Color.trailGreen],
+                LinearGradient(colors: [Color.trailGreen, Color.trailDark],
                                startPoint: .top, endPoint: .bottom)
                     .overlay {
                         Image(systemName: "figure.hiking")

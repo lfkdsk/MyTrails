@@ -14,6 +14,8 @@ struct MyTrailsApp: App {
 }
 
 extension Color {
-    /// AllTrails 风格主色
-    static let trailGreen = Color(red: 0.26, green: 0.54, blue: 0.14)
+    /// AllTrails 品牌绿 #428A13
+    static let trailGreen = Color(red: 0.259, green: 0.541, blue: 0.075)
+    /// AllTrails 深绿 #2C5601
+    static let trailDark = Color(red: 0.173, green: 0.337, blue: 0.004)
 }

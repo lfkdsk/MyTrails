@@ -40,12 +40,13 @@ extension Trail {
         }
     }
 
+    /// AllTrails 风格难度色：简单绿 / 中等蓝 / 困难近黑 / 极难红
     var difficultyColor: Color {
         switch difficulty {
-        case ..<3: return .green
-        case 3..<5: return .blue
-        case 5..<7: return .orange
-        default: return .red
+        case ..<3: return .trailGreen
+        case 3..<5: return Color(red: 0.24, green: 0.42, blue: 0.87)
+        case 5..<7: return Color(red: 0.20, green: 0.20, blue: 0.22)
+        default: return Color(red: 0.80, green: 0.25, blue: 0.22)
         }
     }
 

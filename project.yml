@@ -30,6 +30,8 @@ targets:
         NSLocationWhenInUseUsageDescription: 记录徒步路线需要使用你的位置。
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        UIBackgroundModes:
+          - location
         ITSAppUsesNonExemptEncryption: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

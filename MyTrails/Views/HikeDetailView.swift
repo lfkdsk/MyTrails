@@ -13,7 +13,7 @@ struct HikeDetailView: View {
                     routeMap(track)
                 } else {
                     ZStack {
-                        LinearGradient(colors: [Color.trailGreen.opacity(0.4), Color.trailGreen],
+                        LinearGradient(colors: [Color.trailGreen, Color.trailDark],
                                        startPoint: .top, endPoint: .bottom)
                         Text("此记录没有 GPS 轨迹")
                             .font(.caption)
