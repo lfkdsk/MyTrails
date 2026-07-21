@@ -12,8 +12,8 @@ sqlite3 "$DB" "CREATE TABLE IF NOT EXISTS trail_routes(trail_id TEXT PRIMARY KEY
 sqlite3 "$DB" "SELECT DISTINCT state FROM trails ORDER BY state;" | while IFS= read -r STATE; do
   SLUG=$(echo "$STATE" | tr 'A-Z' 'a-z' | tr ' ' '-')
   echo "BEGIN $STATE"
-  # 缓存各州抽取好的命名徒步路径，重跑时免下载
-  if [ ! -s "${SLUG}.geojsonl" ]; then
+  # 缓存各州抽取好的全部徒步路径（含无名 way，用于路网连接），重跑时免下载
+  if [ ! -s "${SLUG}-all.geojsonl" ]; then
     if ! curl -sL --retry 3 --max-time 1200 -o s.pbf \
         "https://download.geofabrik.de/north-america/us/${SLUG}-latest.osm.pbf"; then
       echo "ERROR download $STATE"
@@ -24,10 +24,9 @@ sqlite3 "$DB" "SELECT DISTINCT state FROM trails ORDER BY state;" | while IFS= r
       rm -f s.pbf
       continue
     fi
-    osmium tags-filter f1.pbf w/name -o f2.pbf --overwrite >/dev/null 2>&1
-    osmium export f2.pbf -f geojsonseq -o "${SLUG}.geojsonl" --overwrite >/dev/null 2>&1
-    rm -f s.pbf f1.pbf f2.pbf
+    osmium export f1.pbf -f geojsonseq -o "${SLUG}-all.geojsonl" --overwrite >/dev/null 2>&1
+    rm -f s.pbf f1.pbf
   fi
-  python3 "$REPO/scripts/match_routes.py" "${SLUG}.geojsonl" "$STATE" "$DB" || echo "ERROR match $STATE"
+  python3 "$REPO/scripts/match_routes.py" "${SLUG}-all.geojsonl" "$STATE" "$DB" || echo "ERROR match $STATE"
 done
 echo PIPELINE_DONE
