@@ -6,7 +6,9 @@ struct TrailDetailView: View {
     let trail: Trail
 
     @State private var showRecorder = false
-    @State private var routeSegments: [[CLLocationCoordinate2D]] = []
+    @State private var routePaths = TrailPaths()
+
+    private var routeSegments: [[CLLocationCoordinate2D]] { routePaths.matched }
 
     private var isFavorite: Bool { store.favorites.contains(trail.id) }
     private var hikeCount: Int { store.hikeCount(for: trail.id) }
@@ -48,6 +50,9 @@ struct TrailDetailView: View {
                     .padding(.horizontal)
 
                 miniMap
+                    .padding(.horizontal)
+
+                routeConfidenceNote
                     .padding(.horizontal)
 
                 Button {
@@ -95,7 +100,7 @@ struct TrailDetailView: View {
             if ProcessInfo.processInfo.environment["MT_RECORD_TRAIL"] != nil {
                 showRecorder = true
             }
-            routeSegments = await TrailPathLoader.paths(around: trail, db: store.db).matched
+            routePaths = await TrailPathLoader.paths(around: trail, db: store.db)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -155,11 +160,36 @@ struct TrailDetailView: View {
                                    longitudeDelta: max((lastLng - firstLng) * 1.4, 0.02)))
     }
 
+    @ViewBuilder private var routeConfidenceNote: some View {
+        if routeSegments.isEmpty {
+            Label("暂无收录路线。这条步道的路线尚无可靠来源，欢迎用 GPS 记录后贡献。",
+                  systemImage: "map.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if routePaths.isDashed {
+            Label("参考路线（可信度中等）：由 OSM 路网拼接，可能不完整，请结合实际路况判断。",
+                  systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Label("高可信路线：主体为官方/实测来源的同名步道，长度吻合。",
+                  systemImage: "checkmark.seal")
+                .font(.caption)
+                .foregroundStyle(Color.trailGreen)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private var miniMap: some View {
         Map(initialPosition: .region(miniMapRegion)) {
             ForEach(routeSegments.indices, id: \.self) { index in
                 MapPolyline(coordinates: routeSegments[index])
-                    .stroke(Color.orange.opacity(0.9), lineWidth: 3)
+                    .stroke(Color.orange.opacity(0.9),
+                            style: routePaths.isDashed
+                                ? StrokeStyle(lineWidth: 3, dash: [7, 5])
+                                : StrokeStyle(lineWidth: 3))
             }
             Marker(trail.name, coordinate: trail.coordinate)
                 .tint(trail.difficultyColor)

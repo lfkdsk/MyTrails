@@ -45,14 +45,12 @@ struct RecordingView: View {
             ZStack(alignment: .bottom) {
                 Map(position: $position) {
                     UserAnnotation()
-                    ForEach(plannedPaths.nearby.indices, id: \.self) { index in
-                        MapPolyline(coordinates: plannedPaths.nearby[index])
-                            .stroke(Color.brown.opacity(0.45),
-                                    style: StrokeStyle(lineWidth: 2.5, dash: [6, 5]))
-                    }
                     ForEach(plannedPaths.matched.indices, id: \.self) { index in
                         MapPolyline(coordinates: plannedPaths.matched[index])
-                            .stroke(Color.orange.opacity(0.9), lineWidth: 4)
+                            .stroke(Color.orange.opacity(0.9),
+                                    style: plannedPaths.isDashed
+                                        ? StrokeStyle(lineWidth: 3, dash: [7, 5])
+                                        : StrokeStyle(lineWidth: 4))
                     }
                     if recorder.points.count > 1 {
                         MapPolyline(coordinates: recorder.points)
@@ -129,7 +127,11 @@ struct RecordingView: View {
                 if trail != nil {
                     Group {
                         if !plannedPaths.matched.isEmpty {
-                            Label("橙色：本步道路线（离线 OSM 数据）", systemImage: "map")
+                            if plannedPaths.isDashed {
+                                Label("虚线：参考路线（可信度中等，请自行核对）", systemImage: "map")
+                            } else {
+                                Label("橙色：本步道路线（高可信 · OSM 多源）", systemImage: "map")
+                            }
                         } else if !loadingPaths {
                             Label("本步道暂无收录路线", systemImage: "map.circle")
                         }

@@ -27,6 +27,27 @@ ANCHOR_M = 300       # 步道口吸附到路网的最大距离
 CONNECT_BUDGET_M = 2500   # 单次连接允许穿过的无名路段总长
 LENGTH_STOP_FACTOR = 1.8  # 组装长度达到步道标称长度的 1.8 倍后停止吸收分量
 
+# way 来源标记（位掩码）
+F_OFFICIAL = 1   # operator=林务局/NPS/BLM… 或带 ref 官方编号
+F_FIELD = 2      # 带实地属性（sac_scale/trail_visibility）——卫星描不出来，说明有人走过
+F_BLOCKED = 4    # access=private/no 或 informal=yes——不应借道通行
+
+OFFICIAL_OPERATOR_HINTS = ("forest service", "national park", "nps", "blm",
+                           "bureau of land", "state park", "park service",
+                           "us fish", "wildlife")
+
+
+def way_flags(props):
+    flags = 0
+    op = (props.get("operator") or "").lower()
+    if props.get("ref") or any(h in op for h in OFFICIAL_OPERATOR_HINTS):
+        flags |= F_OFFICIAL
+    if props.get("sac_scale") or props.get("trail_visibility"):
+        flags |= F_FIELD
+    if props.get("access") in ("private", "no") or props.get("informal") == "yes":
+        flags |= F_BLOCKED
+    return flags
+
 
 def toks(name):
     return set(re.findall(r"[a-z0-9]+", name.lower())) - STOP
@@ -45,6 +66,7 @@ class Ways:
         self.tokens = []     # frozenset（无名/无效名为空集）
         self.coords = []     # array('d') 扁平 lat,lng
         self.bbox = []
+        self.flags = array("B")  # 每条 way 的来源位掩码
         self.grid = {}
         self.adj = {}        # way idx -> set(way idx)，OSM 共享节点推导
         self._len_cache = {}
@@ -76,6 +98,7 @@ class Ways:
                     lngs.append(c[0])
                 props = feat.get("properties") or {}
                 self.tokens.append(frozenset(toks(props.get("name") or "")))
+                self.flags.append(way_flags(props))
                 self.coords.append(flat)
                 self.bbox.append((min(lats), min(lngs), max(lats), max(lngs)))
                 bb = self.bbox[idx]
@@ -201,15 +224,44 @@ def merge_chains(seg_list):
     return merged
 
 
+def confidence_tier(ways, assembled, matched, expected_geom_m):
+    """按长度完整度 + 命名步道占比 + 官方/实地来源 + 通行权综合定级。
+    high=可放心跟随的实线，medium=虚线参考，low=不作为路线展示。"""
+    geom = sum(ways.length(i) for i in assembled) or 1.0
+    named = sum(ways.length(i) for i in assembled if i in matched)
+    official = sum(ways.length(i) for i in assembled
+                   if ways.flags[i] & (F_OFFICIAL | F_FIELD))
+    has_blocked = any(ways.flags[i] & F_BLOCKED for i in assembled)
+
+    ratio = geom / expected_geom_m if expected_geom_m > 0 else 0
+    named_share = named / geom
+    official_share = official / geom
+
+    if has_blocked:
+        return "low"
+    # 长度对得上、主体是真实同名步道 → 高可信
+    if 0.7 <= ratio <= 1.4 and named_share >= 0.75:
+        return "high"
+    # 官方/实地来源占比高时，长度门槛放宽也算高可信
+    if 0.6 <= ratio <= 1.6 and official_share >= 0.3 and named_share >= 0.6:
+        return "high"
+    if 0.5 <= ratio <= 1.9 and named_share >= 0.5:
+        return "medium"
+    return "low"
+
+
 def assemble(ways, trail, cand):
-    """返回该步道的折线列表（组装失败/无骨架返回 []）。"""
-    tid, name, dist_mi, lat, lng = trail
+    """返回 (折线列表, 置信级)；组装失败/无骨架返回 ([], 'low')。"""
+    tid, name, dist_mi, rtype, lat, lng = trail
     tt = toks(name)
     if not tt:
-        return []
+        return [], "low"
     matched = {i for i in cand if ways.tokens[i] and ways.tokens[i] <= tt}
     if not matched:
-        return []
+        return [], "low"
+
+    # 连接段不借道私有/野路（同名骨架即便带此标记仍保留——那就是步道本身，但会拉低置信）
+    allowed = {i for i in cand if not (ways.flags[i] & F_BLOCKED) or i in matched}
 
     comps = union_find_components(ways, matched)
     near = {}
@@ -241,7 +293,7 @@ def assemble(ways, trail, cand):
     expected = max(dist_mi * 1609.34, 1000.0)
     assembled = set(comps[kept[0]])
     if anchor is not None and anchor not in assembled:
-        raw, path = dijkstra_ways(ways, cand, matched, {anchor}, assembled)
+        raw, path = dijkstra_ways(ways, allowed, matched, {anchor}, assembled)
         if raw <= CONNECT_BUDGET_M:
             assembled.update(path)
 
@@ -255,12 +307,15 @@ def assemble(ways, trail, cand):
         if comp & assembled:
             assembled.update(comp)
             continue
-        raw, path = dijkstra_ways(ways, cand, matched, assembled, comp)
+        raw, path = dijkstra_ways(ways, allowed, matched, assembled, comp)
         if raw <= CONNECT_BUDGET_M:
             assembled.update(path)
             assembled.update(comp)
 
-    return merge_chains([ways.pts(i) for i in assembled])
+    # 往返型步道的几何约为标称长度的一半
+    expected_geom = expected / 2 if "back" in (rtype or "").lower() else expected
+    tier = confidence_tier(ways, assembled, matched, expected_geom)
+    return merge_chains([ways.pts(i) for i in assembled]), tier
 
 
 def main():
@@ -272,30 +327,38 @@ def main():
     con = sqlite3.connect(dbpath)
     con.execute("""CREATE TABLE IF NOT EXISTS trail_routes(
         trail_id TEXT PRIMARY KEY, coords TEXT NOT NULL, updated_at REAL NOT NULL)""")
+    # confidence 列：high/medium/low（老库无此列时补上）
+    cols = [r[1] for r in con.execute("PRAGMA table_info(trail_routes)").fetchall()]
+    if "confidence" not in cols:
+        con.execute("ALTER TABLE trail_routes ADD COLUMN confidence TEXT NOT NULL DEFAULT 'medium'")
     trails = con.execute(
-        "SELECT id, name, distance, lat, lng FROM trails WHERE state = ?", (state,)).fetchall()
+        "SELECT id, name, distance, route_type, lat, lng FROM trails WHERE state = ?", (state,)).fetchall()
 
     now = time.time()
     rows = []
+    tiers = {"high": 0, "medium": 0, "low": 0}
     for trail in trails:
-        tid, name, dist_mi, lat, lng = trail
+        tid, name, dist_mi, rtype, lat, lng = trail
         r = min(max(dist_mi * 1609.34 * 0.6, 2500), 12000)
         dlat = r / 111320
         dlng = r / (111320 * max(0.2, math.cos(math.radians(lat))))
         cand = ways.candidates(lat - dlat, lat + dlat, lng - dlng, lng + dlng)
-        segs = assemble(ways, trail, cand)
+        segs, tier = assemble(ways, trail, cand)
         if not segs:
             continue
+        tiers[tier] += 1
         payload = json.dumps(
             [[[round(a, 6), round(b, 6)] for a, b in seg] for seg in segs],
             separators=(",", ":"))
-        rows.append((tid, payload, now))
+        rows.append((tid, payload, now, tier))
 
     con.executemany(
-        "INSERT OR REPLACE INTO trail_routes(trail_id, coords, updated_at) VALUES(?,?,?)", rows)
+        "INSERT OR REPLACE INTO trail_routes(trail_id, coords, updated_at, confidence) VALUES(?,?,?,?)", rows)
     con.commit()
     con.close()
-    print(f"{state}: matched {len(rows)}/{len(trails)} (osm ways: {len(ways.coords)})", flush=True)
+    print(f"{state}: matched {len(rows)}/{len(trails)} "
+          f"[high {tiers['high']} / med {tiers['medium']} / low {tiers['low']}] "
+          f"(osm ways: {len(ways.coords)})", flush=True)
 
 
 if __name__ == "__main__":
