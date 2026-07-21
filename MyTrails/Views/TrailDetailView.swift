@@ -173,8 +173,14 @@ struct TrailDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        } else if routePaths.confidence == .official {
+            Label("官方路线：来自美国林务局（USFS）等官方步道数据，公有领域。",
+                  systemImage: "checkmark.seal.fill")
+                .font(.caption)
+                .foregroundStyle(Color.trailGreen)
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Label("高可信路线：主体为官方/实测来源的同名步道，长度吻合。",
+            Label("高可信路线：主体为真实同名步道，长度吻合。",
                   systemImage: "checkmark.seal")
                 .font(.caption)
                 .foregroundStyle(Color.trailGreen)

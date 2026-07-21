@@ -129,8 +129,10 @@ struct RecordingView: View {
                         if !plannedPaths.matched.isEmpty {
                             if plannedPaths.isDashed {
                                 Label("虚线：参考路线（可信度中等，请自行核对）", systemImage: "map")
+                            } else if plannedPaths.confidence == .official {
+                                Label("橙色：官方步道路线（USFS 等）", systemImage: "map")
                             } else {
-                                Label("橙色：本步道路线（高可信 · OSM 多源）", systemImage: "map")
+                                Label("橙色：本步道路线（高可信）", systemImage: "map")
                             }
                         } else if !loadingPaths {
                             Label("本步道暂无收录路线", systemImage: "map.circle")
